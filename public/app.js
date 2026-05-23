@@ -147,6 +147,7 @@ function renderCapture() {
 function renderStats() {
   const rows = filterRowsByRange(loadRows());
   const pools = [...new Set(rows.map((row) => row.pool))];
+  $("#realTotalStats").innerHTML = renderRealTotalStats(rows);
   $("#combinedStats").innerHTML = renderCombinedStats(rows);
   $("#poolStats").innerHTML = pools.length
     ? pools.map((pool, index) => renderPoolCard(pool, rows.filter((row) => row.pool === pool), COLORS[index % COLORS.length])).join("")
@@ -164,6 +165,14 @@ function dailySeries(rows) {
   const byDate = new Map();
   for (const row of rows) byDate.set(row.date, round2((byDate.get(row.date) || 0) + row.daily));
   return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
+}
+
+function cumulativeSeries(rows) {
+  let runningTotal = 0;
+  return dailySeries(rows).map((item) => {
+    runningTotal = round2(runningTotal + item.value);
+    return { date: item.date, value: runningTotal };
+  });
 }
 
 function metrics(series) {
@@ -192,6 +201,30 @@ function renderCombinedStats(rows) {
     </div>
     ${renderChart(series, "#16d9f4")}
     ${renderMetrics(data)}
+  `;
+}
+
+function renderRealTotalStats(rows) {
+  const daily = dailySeries(rows);
+  const cumulative = cumulativeSeries(rows);
+  const total = cumulative.at(-1)?.value || 0;
+  const bestDay = daily.length ? Math.max(...daily.map((item) => item.value)) : 0;
+  const average = daily.length ? daily.reduce((sum, item) => sum + item.value, 0) / daily.length : 0;
+  return `
+    <div class="card-top">
+      <div>
+        <p class="eyebrow">Suma real de ganancias</p>
+        <strong>Ganancia real acumulada</strong>
+      </div>
+      <span class="muted">${daily.length} días</span>
+    </div>
+    ${renderChart(cumulative, "#27e49f")}
+    <div class="metric-grid">
+      <div class="metric-box"><span>Total real</span><strong>${money.format(total)}</strong></div>
+      <div class="metric-box"><span>Mejor día</span><strong>${money.format(bestDay)}</strong></div>
+      <div class="metric-box"><span>Promedio diario</span><strong>${money.format(average)}</strong></div>
+      <div class="metric-box"><span>Días</span><strong>${daily.length}</strong></div>
+    </div>
   `;
 }
 
