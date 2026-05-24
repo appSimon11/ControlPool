@@ -31,7 +31,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -319,6 +320,23 @@ input {
 }
 
 input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(22, 217, 244, 0.1);
+}
+
+textarea {
+  width: 100%;
+  min-height: 140px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  outline: none;
+  background: #081426;
+  color: var(--text);
+  padding: 11px;
+  resize: vertical;
+}
+
+textarea:focus {
   border-color: var(--cyan);
   box-shadow: 0 0 0 3px rgba(22, 217, 244, 0.1);
 }
@@ -622,6 +640,16 @@ code {
 .upload-box small {
   display: block;
   color: var(--muted);
+}
+
+.csv-paste-box {
+  line-height: 1.45;
+}
+
+.paste-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .upload-result {

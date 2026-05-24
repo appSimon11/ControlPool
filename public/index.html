@@ -148,23 +148,28 @@
             <div class="panel instructions">
               <h3>Cómo preparar el archivo</h3>
               <ol>
-                <li>Descarga el CSV actual o la plantilla.</li>
+                <li>Descarga la plantilla compatible con Excel o copia el ejemplo de abajo.</li>
                 <li>Ábrelo en Excel, Numbers o Google Sheets.</li>
-                <li>Usa estas columnas exactas: <code>date,pool,total</code>.</li>
-                <li>Escribe la fecha como <code>AAAA-MM-DD</code>, el nombre del pool y el acumulado total del día.</li>
-                <li>Guarda o exporta como CSV separado por comas.</li>
-                <li>Sube el archivo aquí. La app recalcula ganancias diarias, detecta resets y evita duplicados por fecha + pool.</li>
+                <li>Usa estas columnas: <code>date,pool,total</code>. También acepta <code>fecha,pool,acumulado</code>.</li>
+                <li>Escribe la fecha como <code>AAAA-MM-DD</code>, el nombre del pool y el acumulado total visible del día.</li>
+                <li>Guarda como CSV. Puede venir separado por coma, punto y coma o tabulador.</li>
+                <li>Sube el archivo o pega el contenido en la caja. La app previsualiza antes de guardar.</li>
               </ol>
             </div>
             <div class="panel db-actions">
               <button class="primary-button" id="downloadCsv" type="button">Descargar base CSV</button>
               <button class="ghost-button" id="downloadBackup" type="button">Exportar respaldo completo</button>
-              <button class="ghost-button" id="downloadTemplate" type="button">Descargar plantilla</button>
+              <button class="ghost-button" id="downloadTemplate" type="button">Descargar plantilla CSV</button>
               <label class="upload-box">
-                <input id="csvUpload" type="file" accept=".csv,text/csv" />
+                <input id="csvUpload" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" />
                 <span>Subir archivo CSV</span>
                 <small>Se mezcla con los datos actuales y recalcula todo.</small>
               </label>
+              <textarea id="csvPasteBox" class="csv-paste-box" spellcheck="false" placeholder="Pega aqui tu CSV, por ejemplo:&#10;date,pool,total&#10;2026-05-23,rojo,1000&#10;2026-05-23,negro,850"></textarea>
+              <div class="paste-actions">
+                <button class="ghost-button" id="fillCsvExample" type="button">Poner ejemplo</button>
+                <button class="primary-button" id="previewPastedCsv" type="button">Previsualizar texto</button>
+              </div>
               <div class="upload-result" id="uploadResult">Listo para importar.</div>
               <div class="import-preview auth-hidden" id="importPreview">
                 <button class="primary-button" id="confirmImport" type="button">Confirmar importación</button>

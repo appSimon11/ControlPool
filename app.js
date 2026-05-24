@@ -432,6 +432,15 @@ function csvCell(value) {
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function templateCsv() {
+  const pools = defaultPools().length ? defaultPools() : ["rojo", "negro"];
+  const lines = ["date,pool,total"];
+  for (const [index, pool] of pools.entries()) {
+    lines.push(`${todayISO()},${csvCell(pool)},${index === 0 ? "1000" : "850"}`);
+  }
+  return lines.join("\n");
+}
+
 function downloadFile(filename, content) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -443,20 +452,22 @@ function downloadFile(filename, content) {
 }
 
 function parseCsv(text) {
+  const cleanText = String(text || "").replace(/^\uFEFF/, "").replace(/^sep=.\r?\n/i, "");
+  const delimiter = detectDelimiter(cleanText);
   const rows = [];
   let cell = "";
   let row = [];
   let quoted = false;
 
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
+  for (let i = 0; i < cleanText.length; i += 1) {
+    const char = cleanText[i];
+    const next = cleanText[i + 1];
     if (char === '"' && quoted && next === '"') {
       cell += '"';
       i += 1;
     } else if (char === '"') {
       quoted = !quoted;
-    } else if (char === "," && !quoted) {
+    } else if (char === delimiter && !quoted) {
       row.push(cell);
       cell = "";
     } else if ((char === "\n" || char === "\r") && !quoted) {
@@ -473,19 +484,78 @@ function parseCsv(text) {
   if (row.some((item) => item.trim())) rows.push(row);
 
   const [headers, ...data] = rows;
-  const normalized = headers.map((header) => header.trim().toLowerCase());
-  const dateIndex = normalized.indexOf("date");
-  const poolIndex = normalized.indexOf("pool");
-  const totalIndex = normalized.indexOf("total");
+  if (!headers) throw new Error("El archivo esta vacio.");
+
+  const normalized = headers.map(normalizeHeader);
+  const dateIndex = findHeader(normalized, ["date", "fecha"]);
+  const poolIndex = findHeader(normalized, ["pool", "piscina"]);
+  const totalIndex = findHeader(normalized, ["total", "acumulado", "ganancia acumulada", "visible total", "visible_total"]);
   if ([dateIndex, poolIndex, totalIndex].includes(-1)) {
-    throw new Error("El CSV debe tener las columnas date,pool,total.");
+    throw new Error("No encontre columnas validas. Usa date,pool,total o fecha,pool,acumulado.");
   }
 
   return data.map((items) => ({
-    date: items[dateIndex]?.trim(),
+    date: normalizeDate(items[dateIndex]),
     pool: normalizePoolName(items[poolIndex]),
-    total: Number(String(items[totalIndex]).replace(/[$\s]/g, ""))
+    total: normalizeNumber(items[totalIndex])
   }));
+}
+
+function detectDelimiter(text) {
+  const firstLine = String(text || "").split(/\r?\n/).find((line) => line.trim()) || "";
+  const delimiters = [",", ";", "\t"];
+  return delimiters
+    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
+    .sort((a, b) => b.count - a.count)[0].delimiter;
+}
+
+function normalizeHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function findHeader(headers, candidates) {
+  return headers.findIndex((header) => candidates.includes(header));
+}
+
+function normalizeDate(value) {
+  const cleanValue = String(value || "").trim();
+  const iso = cleanValue.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  const latam = cleanValue.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (latam) return `${latam[3]}-${latam[2].padStart(2, "0")}-${latam[1].padStart(2, "0")}`;
+  return cleanValue;
+}
+
+function normalizeNumber(value) {
+  const cleanValue = String(value || "")
+    .trim()
+    .replace(/\$/g, "")
+    .replace(/\s/g, "");
+
+  if (cleanValue.includes(",") && cleanValue.includes(".")) {
+    return Number(cleanValue.replace(/,/g, ""));
+  }
+  if (cleanValue.includes(",") && !cleanValue.includes(".")) {
+    return Number(cleanValue.replace(",", "."));
+  }
+  return Number(cleanValue);
+}
+
+function previewImport(rows, sourceLabel) {
+  const valid = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.pool && Number.isFinite(row.total));
+  const existingKeys = new Set(loadRows().map((row) => `${row.date}__${row.pool}`));
+  const replaceCount = valid.filter((row) => existingKeys.has(`${row.date}__${row.pool}`)).length;
+  const newCount = valid.length - replaceCount;
+  const errorCount = rows.length - valid.length;
+  pendingImportRows = valid;
+  $("#uploadResult").textContent = `Previsualizacion de ${sourceLabel}: ${newCount} nuevos, ${replaceCount} reemplazos, ${errorCount} con error. Confirma para guardar.`;
+  $("#importPreview").classList.toggle("auth-hidden", !valid.length);
 }
 
 function escapeHtml(value) {
@@ -597,8 +667,7 @@ $("#downloadBackup").addEventListener("click", () => {
 });
 
 $("#downloadTemplate").addEventListener("click", () => {
-  const templateRows = defaultPools().map((pool, index) => `2026-05-22,${pool},${index === 0 ? "1000" : "850"}`);
-  downloadFile(`plantilla-pool-gains-${currentUser?.username}.csv`, ["date,pool,total", ...templateRows].join("\n"));
+  downloadFile(`plantilla-pool-gains-${currentUser?.username}.csv`, `\uFEFFsep=,\n${templateCsv()}\n`);
 });
 
 $("#csvUpload").addEventListener("change", async (event) => {
@@ -606,20 +675,33 @@ $("#csvUpload").addEventListener("change", async (event) => {
   if (!file) return;
   try {
     const rows = parseCsv(await file.text());
-    const valid = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.pool && Number.isFinite(row.total));
-    const existingKeys = new Set(loadRows().map((row) => `${row.date}__${row.pool}`));
-    const replaceCount = valid.filter((row) => existingKeys.has(`${row.date}__${row.pool}`)).length;
-    const newCount = valid.length - replaceCount;
-    const errorCount = rows.length - valid.length;
-    pendingImportRows = valid;
-    $("#uploadResult").textContent = `Previsualización de ${file.name}: ${newCount} nuevos, ${replaceCount} reemplazos, ${errorCount} con error. Confirma para guardar.`;
-    $("#importPreview").classList.toggle("auth-hidden", !valid.length);
+    previewImport(rows, file.name);
   } catch (error) {
     $("#uploadResult").textContent = error.message;
     $("#importPreview").classList.add("auth-hidden");
     pendingImportRows = [];
   } finally {
     event.target.value = "";
+  }
+});
+
+$("#fillCsvExample").addEventListener("click", () => {
+  $("#csvPasteBox").value = templateCsv();
+  $("#uploadResult").textContent = "Ejemplo listo. Puedes editarlo y luego previsualizar.";
+});
+
+$("#previewPastedCsv").addEventListener("click", () => {
+  try {
+    const text = $("#csvPasteBox").value;
+    if (!text.trim()) {
+      $("#uploadResult").textContent = "Pega o escribe datos antes de previsualizar.";
+      return;
+    }
+    previewImport(parseCsv(text), "texto pegado");
+  } catch (error) {
+    $("#uploadResult").textContent = error.message;
+    $("#importPreview").classList.add("auth-hidden");
+    pendingImportRows = [];
   }
 });
 

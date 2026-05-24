@@ -149,17 +149,26 @@ Al arrancar, la app:
 
 ## CSV
 
-Para importar datos en batch, el archivo debe tener estas columnas exactas:
+Para importar datos en batch, puedes usar archivo o pegar el contenido directamente en la cuarta sección.
+
+Formato recomendado:
 
 ```csv
 date,pool,total
-2026-05-22,rojo,1000
-2026-05-22,negro,850
+2026-05-23,rojo,1000
+2026-05-23,negro,850
 ```
 
 - `date`: formato `AAAA-MM-DD`
 - `pool`: nombre del pool
 - `total`: acumulado visible del pool ese día
+
+También acepta:
+
+- columnas `fecha,pool,acumulado`
+- separador por coma, punto y coma o tabulador
+- fechas `AAAA-MM-DD`, `AAAA/MM/DD`, `DD/MM/AAAA` o `DD-MM-AAAA`
+- números con punto o coma decimal
 
 La app previsualiza nuevos registros, reemplazos y errores antes de guardar.
 
