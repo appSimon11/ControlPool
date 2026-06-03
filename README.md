@@ -1,6 +1,8 @@
-# Pool Console
+# Pool Console PostgreSQL
 
 Dashboard privado para capturar ganancias diarias por pool, detectar resets, consultar estadísticas, forecast e importar/exportar CSV.
+
+Esta versión es igual a la app Railway original, pero usando **PostgreSQL** en lugar de MySQL.
 
 ## Usuarios iniciales
 
@@ -21,10 +23,10 @@ Dashboard privado para capturar ganancias diarias por pool, detectar resets, con
 ## Estructura
 
 ```txt
-pool-console-railway/
+pool pG/
   public/          Interfaz web
-  sql/schema.sql   Esquema MySQL
-  server.js        API, login y conexión MySQL
+  sql/schema.sql   Esquema PostgreSQL
+  server.js        API, login y conexión PostgreSQL
   package.json     Scripts y dependencias
   .env.example     Variables de entorno ejemplo
 ```
@@ -32,9 +34,9 @@ pool-console-railway/
 ## Desarrollo local
 
 1. Instala Node.js 20 o superior.
-2. Crea una base MySQL local.
+2. Crea una base PostgreSQL local.
 3. Copia `.env.example` a `.env`.
-4. Llena las variables de MySQL en `.env`.
+4. Llena `DATABASE_URL` o las variables `PG...`.
 5. Instala dependencias:
 
 ```bash
@@ -53,14 +55,14 @@ npm run dev
 http://localhost:3000
 ```
 
-El servidor crea automáticamente las tablas y usuarios iniciales al arrancar. El archivo `sql/schema.sql` queda como referencia o para correrlo manualmente si prefieres.
+El servidor crea automáticamente las tablas y usuarios iniciales al arrancar. El archivo `sql/schema.sql` queda como referencia o para correrlo manualmente.
 
 ## Subir a GitHub
 
 1. Entra a la carpeta del proyecto:
 
 ```bash
-cd pool-console-railway
+cd "pool pG"
 ```
 
 2. Inicializa Git:
@@ -78,7 +80,7 @@ git add .
 4. Crea el primer commit:
 
 ```bash
-git commit -m "Initial Pool Console app"
+git commit -m "Initial Pool Console PostgreSQL app"
 ```
 
 5. Crea un repositorio vacío en GitHub.
@@ -96,38 +98,36 @@ git branch -M main
 git push -u origin main
 ```
 
-## Crear Railway con MySQL
+## Crear Railway con PostgreSQL
 
 1. Entra a Railway.
 2. Crea un nuevo proyecto.
 3. Elige `Deploy from GitHub repo`.
 4. Selecciona el repositorio que acabas de subir.
-5. Agrega una base de datos MySQL dentro del mismo proyecto.
-6. En el servicio web de la app, abre la sección `Variables`.
-7. Agrega las variables de conexión tomando los valores del servicio MySQL.
-
-Railway documenta que el servicio MySQL expone variables como `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE` y `MYSQL_URL`.
+5. Agrega una base de datos **PostgreSQL** dentro del mismo proyecto.
+6. En el servicio web de la app, abre `Variables`.
+7. Agrega la variable de conexión de Postgres.
 
 ## Variables para Railway
 
-En el servicio web de la app, configura:
+La forma más simple:
 
 ```txt
 NODE_ENV=production
 SESSION_SECRET=pon-aqui-un-texto-largo-privado
-MYSQLHOST=${{ MySQL.MYSQLHOST }}
-MYSQLPORT=${{ MySQL.MYSQLPORT }}
-MYSQLUSER=${{ MySQL.MYSQLUSER }}
-MYSQLPASSWORD=${{ MySQL.MYSQLPASSWORD }}
-MYSQLDATABASE=${{ MySQL.MYSQLDATABASE }}
+DATABASE_URL=${{ Postgres.DATABASE_URL }}
 ```
 
-Alternativa: si Railway te muestra `MYSQL_URL`, también puedes usar solo:
+Si Railway te da variables separadas, también puedes usar:
 
 ```txt
 NODE_ENV=production
 SESSION_SECRET=pon-aqui-un-texto-largo-privado
-MYSQL_URL=${{ MySQL.MYSQL_URL }}
+PGHOST=${{ Postgres.PGHOST }}
+PGPORT=${{ Postgres.PGPORT }}
+PGUSER=${{ Postgres.PGUSER }}
+PGPASSWORD=${{ Postgres.PGPASSWORD }}
+PGDATABASE=${{ Postgres.PGDATABASE }}
 ```
 
 No configures `PORT` en Railway salvo que tengas una razón específica. Railway suele inyectarlo automáticamente.
@@ -171,8 +171,3 @@ También acepta:
 - números con punto o coma decimal
 
 La app previsualiza nuevos registros, reemplazos y errores antes de guardar.
-
-## Fuentes Railway
-
-- [Railway MySQL Docs](https://docs.railway.com/databases/mysql)
-- [Railway Variables Docs](https://docs.railway.com/variables)

@@ -1,10 +1,11 @@
 import "dotenv/config";
 import express from "express";
 import session from "express-session";
-import mysql from "mysql2/promise";
+import pg from "pg";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
@@ -27,71 +28,63 @@ app.use(
   })
 );
 
-const pool = mysql.createPool(databaseConfig());
+const db = new Pool(databaseConfig());
 
 function databaseConfig() {
-  if (process.env.MYSQL_URL) {
+  if (process.env.DATABASE_URL) {
     return {
-      uri: process.env.MYSQL_URL,
-      waitForConnections: true,
-      connectionLimit: 10,
-      decimalNumbers: true
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
     };
   }
 
   return {
-    host: process.env.MYSQLHOST || "localhost",
-    port: Number(process.env.MYSQLPORT || 3306),
-    user: process.env.MYSQLUSER || "root",
-    password: process.env.MYSQLPASSWORD || "",
-    database: process.env.MYSQLDATABASE || "pool_console",
-    waitForConnections: true,
-    connectionLimit: 10,
-    decimalNumbers: true
+    host: process.env.PGHOST || "localhost",
+    port: Number(process.env.PGPORT || 5432),
+    user: process.env.PGUSER || "postgres",
+    password: process.env.PGPASSWORD || "",
+    database: process.env.PGDATABASE || "pool_console"
   };
 }
 
 async function initDb() {
-  await pool.query(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
+      id SERIAL PRIMARY KEY,
       username VARCHAR(80) NOT NULL UNIQUE,
       password_plain VARCHAR(120) NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await pool.query(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS pools (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name VARCHAR(120) NOT NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_pool_user_name (user_id, name),
-      CONSTRAINT fk_pools_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uniq_pool_user_name UNIQUE (user_id, name)
     )
   `);
-  await pool.query(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS captures (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
-      pool_id INT NOT NULL,
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      pool_id INT NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
       capture_date DATE NOT NULL,
-      visible_total DECIMAL(16, 2) NOT NULL,
-      source ENUM('manual', 'csv_import') NOT NULL DEFAULT 'manual',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_capture_user_pool_date (user_id, pool_id, capture_date),
-      CONSTRAINT fk_captures_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      CONSTRAINT fk_captures_pool FOREIGN KEY (pool_id) REFERENCES pools(id) ON DELETE CASCADE
+      visible_total NUMERIC(16, 2) NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'csv_import')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uniq_capture_user_pool_date UNIQUE (user_id, pool_id, capture_date)
     )
   `);
 
-  await pool.query(
+  await db.query(
     `
       INSERT INTO users (username, password_plain)
       VALUES ('Andres', 'Andres$'), ('Sandra', 'Sandra$')
-      ON DUPLICATE KEY UPDATE password_plain = VALUES(password_plain)
+      ON CONFLICT (username) DO UPDATE SET password_plain = EXCLUDED.password_plain
     `
   );
   await ensurePoolRename("Andres", "97", "rojo");
@@ -100,30 +93,38 @@ async function initDb() {
 }
 
 async function ensureDefaultPool(username, poolName) {
-  const [[user]] = await pool.query("SELECT id FROM users WHERE username = ?", [username]);
+  const { rows } = await db.query("SELECT id FROM users WHERE username = $1", [username]);
+  const user = rows[0];
   if (!user) return;
-  await pool.query(
-    "INSERT INTO pools (user_id, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE active = TRUE",
+  await db.query(
+    `
+      INSERT INTO pools (user_id, name)
+      VALUES ($1, $2)
+      ON CONFLICT (user_id, name) DO UPDATE SET active = TRUE
+    `,
     [user.id, poolName]
   );
 }
 
 async function ensurePoolRename(username, oldName, newName) {
-  const [[user]] = await pool.query("SELECT id FROM users WHERE username = ?", [username]);
+  const { rows: users } = await db.query("SELECT id FROM users WHERE username = $1", [username]);
+  const user = users[0];
   if (!user) return;
 
-  const [[oldPool]] = await pool.query("SELECT id FROM pools WHERE user_id = ? AND name = ?", [user.id, oldName]);
-  const [[newPool]] = await pool.query("SELECT id FROM pools WHERE user_id = ? AND name = ?", [user.id, newName]);
+  const { rows: oldPools } = await db.query("SELECT id FROM pools WHERE user_id = $1 AND name = $2", [user.id, oldName]);
+  const { rows: newPools } = await db.query("SELECT id FROM pools WHERE user_id = $1 AND name = $2", [user.id, newName]);
+  const oldPool = oldPools[0];
+  const newPool = newPools[0];
 
   if (oldPool && !newPool) {
-    await pool.query("UPDATE pools SET name = ?, active = TRUE WHERE id = ?", [newName, oldPool.id]);
+    await db.query("UPDATE pools SET name = $1, active = TRUE WHERE id = $2", [newName, oldPool.id]);
     return;
   }
 
   if (oldPool && newPool) {
-    await pool.query("UPDATE captures SET pool_id = ? WHERE pool_id = ?", [newPool.id, oldPool.id]);
-    await pool.query("DELETE FROM pools WHERE id = ?", [oldPool.id]);
-    await pool.query("UPDATE pools SET active = TRUE WHERE id = ?", [newPool.id]);
+    await db.query("UPDATE captures SET pool_id = $1, updated_at = NOW() WHERE pool_id = $2", [newPool.id, oldPool.id]);
+    await db.query("DELETE FROM pools WHERE id = $1", [oldPool.id]);
+    await db.query("UPDATE pools SET active = TRUE WHERE id = $1", [newPool.id]);
     return;
   }
 
@@ -140,11 +141,6 @@ function requireAuth(req, res, next) {
 
 function normalizePoolName(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
-}
-
-function toDateOnly(value) {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
 }
 
 function round2(value) {
@@ -175,18 +171,20 @@ function recalculate(rows) {
 
 async function getOrCreatePoolId(userId, name) {
   const poolName = normalizePoolName(name);
-  const [[existing]] = await pool.query("SELECT id FROM pools WHERE user_id = ? AND name = ?", [userId, poolName]);
+  const { rows: existingRows } = await db.query("SELECT id FROM pools WHERE user_id = $1 AND name = $2", [userId, poolName]);
+  const existing = existingRows[0];
   if (existing) return existing.id;
-  const [result] = await pool.query("INSERT INTO pools (user_id, name) VALUES (?, ?)", [userId, poolName]);
-  return result.insertId;
+
+  const { rows } = await db.query("INSERT INTO pools (user_id, name) VALUES ($1, $2) RETURNING id", [userId, poolName]);
+  return rows[0].id;
 }
 
 async function rowsForUser(userId) {
-  const [rows] = await pool.query(
+  const { rows } = await db.query(
     `
       SELECT
         c.id,
-        DATE_FORMAT(c.capture_date, '%Y-%m-%d') AS date,
+        c.capture_date::text AS date,
         p.name AS pool,
         c.visible_total AS total,
         c.source,
@@ -194,7 +192,7 @@ async function rowsForUser(userId) {
         c.updated_at
       FROM captures c
       JOIN pools p ON p.id = c.pool_id
-      WHERE c.user_id = ?
+      WHERE c.user_id = $1
       ORDER BY c.capture_date ASC, p.name ASC
     `,
     [userId]
@@ -205,7 +203,8 @@ async function rowsForUser(userId) {
 app.post("/api/login", async (req, res) => {
   const username = String(req.body.username || "").trim();
   const password = String(req.body.password || "");
-  const [[user]] = await pool.query("SELECT id, username, password_plain FROM users WHERE LOWER(username) = LOWER(?)", [username]);
+  const { rows } = await db.query("SELECT id, username, password_plain FROM users WHERE LOWER(username) = LOWER($1)", [username]);
+  const user = rows[0];
 
   if (!user || user.password_plain !== password) {
     res.status(401).json({ error: "Usuario o contraseña incorrectos." });
@@ -243,11 +242,12 @@ app.post("/api/rows", requireAuth, async (req, res) => {
 
   for (const row of validRows) {
     const poolId = await getOrCreatePoolId(req.session.user.id, row.pool);
-    await pool.query(
+    await db.query(
       `
         INSERT INTO captures (user_id, pool_id, capture_date, visible_total, source)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE visible_total = VALUES(visible_total), source = VALUES(source)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id, pool_id, capture_date)
+        DO UPDATE SET visible_total = EXCLUDED.visible_total, source = EXCLUDED.source, updated_at = NOW()
       `,
       [req.session.user.id, poolId, row.date, row.total, source]
     );
@@ -268,15 +268,15 @@ app.put("/api/rows/:id", requireAuth, async (req, res) => {
   }
 
   const poolId = await getOrCreatePoolId(req.session.user.id, poolName);
-  await pool.query(
-    "UPDATE captures SET capture_date = ?, pool_id = ?, visible_total = ?, source = 'manual' WHERE id = ? AND user_id = ?",
+  await db.query(
+    "UPDATE captures SET capture_date = $1, pool_id = $2, visible_total = $3, source = 'manual', updated_at = NOW() WHERE id = $4 AND user_id = $5",
     [date, poolId, total, id, req.session.user.id]
   );
   res.json({ rows: await rowsForUser(req.session.user.id) });
 });
 
 app.delete("/api/rows/:id", requireAuth, async (req, res) => {
-  await pool.query("DELETE FROM captures WHERE id = ? AND user_id = ?", [Number(req.params.id), req.session.user.id]);
+  await db.query("DELETE FROM captures WHERE id = $1 AND user_id = $2", [Number(req.params.id), req.session.user.id]);
   res.json({ rows: await rowsForUser(req.session.user.id) });
 });
 
@@ -292,7 +292,7 @@ app.get("*", (req, res) => {
 initDb()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`Pool Console listening on ${PORT}`);
+      console.log(`Pool Console Postgres listening on ${PORT}`);
     });
   })
   .catch((error) => {
