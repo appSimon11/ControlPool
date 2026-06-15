@@ -473,6 +473,59 @@ textarea:focus {
   color: #d6e5f6;
 }
 
+.year-map-panel {
+  margin-top: 12px;
+}
+
+.year-map-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.year-map-head strong,
+.year-map-head span {
+  display: block;
+}
+
+.year-map-head span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.year-map-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 8px);
+  grid-auto-columns: 8px;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.year-cell {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(139, 162, 189, 0.22);
+}
+
+.year-cell.up {
+  background: #65e6a2;
+}
+
+.year-cell.down {
+  background: #ff4d67;
+}
+
+.year-cell.selected {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
 .reset-tag {
   color: var(--yellow);
   font-size: 12px;
@@ -771,6 +824,7 @@ code {
 
   .topbar,
   .section-header,
+  .year-map-head,
   .form-row.split {
     align-items: stretch;
     flex-direction: column;

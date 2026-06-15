@@ -31,19 +31,20 @@ app.use(
 const db = new Pool(databaseConfig());
 
 function databaseConfig() {
-  if (process.env.DATABASE_URL) {
+  const connectionString = process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL || process.env.DATABASE_PUBLIC_URL || process.env.POSTGRES_URL;
+  if (connectionString) {
     return {
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
     };
   }
 
   return {
-    host: process.env.PGHOST || "localhost",
-    port: Number(process.env.PGPORT || 5432),
-    user: process.env.PGUSER || "postgres",
-    password: process.env.PGPASSWORD || "",
-    database: process.env.PGDATABASE || "pool_console"
+    host: process.env.PGHOST || process.env.POSTGRES_HOST || "localhost",
+    port: Number(process.env.PGPORT || process.env.POSTGRES_PORT || 5432),
+    user: process.env.PGUSER || process.env.POSTGRES_USER || "postgres",
+    password: process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD || "",
+    database: process.env.PGDATABASE || process.env.POSTGRES_DB || process.env.POSTGRES_DATABASE || "pool_console"
   };
 }
 

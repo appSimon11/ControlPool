@@ -3,6 +3,7 @@ const USER_DEFAULT_POOLS = {
   Sandra: ["UNI"]
 };
 const COLORS = ["#16d9f4", "#ff4fa1", "#2d7cff", "#27e49f", "#ffd166", "#9b7bff"];
+const DAILY_TARGET = 50;
 const sections = ["capture", "stats", "forecast", "database"];
 
 let activeRange = "all";
@@ -142,6 +143,7 @@ function renderCapture() {
         )
         .join("")
     : `<div class="empty-state">Guarda una captura para ver el desglose del día.</div>`;
+  renderYearThresholdMap(rows, date);
 }
 
 function renderStats() {
@@ -177,15 +179,29 @@ function cumulativeSeries(rows) {
 
 function metrics(series) {
   const values = series.map((item) => item.value);
-  if (!values.length) return { max: 0, min: 0, average: 0, recent: 0, total: 0 };
+  if (!values.length) return { max: 0, min: 0, average: 0, weekAverage: 0, total: 0 };
   const total = values.reduce((sum, value) => sum + value, 0);
   return {
     max: Math.max(...values),
     min: Math.min(...values),
     average: total / values.length,
-    recent: values.slice(-7).reduce((sum, value) => sum + value, 0) / Math.min(values.length, 7),
+    weekAverage: calendarWeekAverage(series),
     total
   };
+}
+
+function calendarWeekAverage(series) {
+  if (!series.length) return 0;
+  const latestDate = parseLocalDate(series.at(-1).date);
+  const weekStart = mondayStart(latestDate);
+  const weekEnd = addDays(weekStart, 6);
+  const weekValues = series
+    .filter((item) => {
+      const date = parseLocalDate(item.date);
+      return date >= weekStart && date <= weekEnd;
+    })
+    .map((item) => item.value);
+  return weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : 0;
 }
 
 function renderCombinedStats(rows) {
@@ -248,9 +264,88 @@ function renderMetrics(data) {
       <div class="metric-box"><span>Máximo</span><strong>${money.format(data.max)}</strong></div>
       <div class="metric-box"><span>Mínimo</span><strong>${money.format(data.min)}</strong></div>
       <div class="metric-box"><span>Media</span><strong>${money.format(data.average)}</strong></div>
-      <div class="metric-box"><span>Promedio 7d</span><strong>${money.format(data.recent)}</strong></div>
+      <div class="metric-box"><span>Promedio semana</span><strong>${money.format(data.weekAverage)}</strong></div>
     </div>
   `;
+}
+
+function renderYearThresholdMap(rows, selectedDate) {
+  const selected = parseLocalDate(selectedDate || todayISO());
+  const year = selected.getFullYear();
+  const today = parseLocalDate(todayISO());
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd = new Date(year, 11, 31);
+  const firstGridDay = mondayStart(yearStart);
+  const totalDays = differenceInDays(yearEnd, firstGridDay) + 1;
+  const gridDays = Math.ceil(totalDays / 7) * 7;
+  const totalsByDate = new Map(dailySeries(rows).map((item) => [item.date, item.value]));
+  const selectedDay = dayOfYear(selected);
+  const yearRows = [...totalsByDate.entries()].filter(([date]) => date.startsWith(`${year}-`));
+  const greenDays = yearRows.filter(([, value]) => value >= DAILY_TARGET).length;
+  const redDays = yearRows.filter(([, value]) => value < DAILY_TARGET).length;
+
+  const cells = Array.from({ length: gridDays }, (_, index) => {
+    const date = addDays(firstGridDay, index);
+    const iso = toISODate(date);
+    const isOutsideYear = date.getFullYear() !== year;
+    const value = totalsByDate.get(iso);
+    const isFuture = date > today;
+    const status = isOutsideYear || isFuture || value === undefined ? "empty" : value >= DAILY_TARGET ? "up" : "down";
+    const isSelected = iso === selectedDate;
+    const title = isOutsideYear ? "" : `${iso}: ${value === undefined ? "sin dato" : money.format(value)}`;
+    return `<span class="year-cell ${status}${isSelected ? " selected" : ""}" title="${escapeHtml(title)}"></span>`;
+  }).join("");
+
+  $("#yearThresholdMap").innerHTML = `
+    <div class="year-map-head">
+      <div>
+        <strong>Mapa del año</strong>
+        <span>Meta diaria: ${money.format(DAILY_TARGET)} · ${greenDays} arriba · ${redDays} abajo</span>
+      </div>
+      <strong>${year} · día ${selectedDay}</strong>
+    </div>
+    <div class="year-map-grid" aria-label="Mapa anual de meta diaria">${cells}</div>
+  `;
+}
+
+function parseLocalDate(value) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function toISODate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function mondayStart(date) {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function differenceInDays(end, start) {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.round((mondaySafe(end) - mondaySafe(start)) / msPerDay);
+}
+
+function mondaySafe(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function dayOfYear(date) {
+  return differenceInDays(date, new Date(date.getFullYear(), 0, 1)) + 1;
 }
 
 function renderChart(series, color) {
