@@ -19,6 +19,8 @@ Esta versión es igual a la app Railway original, pero usando **PostgreSQL** en 
 - El acumulado ajustado sigue sumando históricamente. Ejemplo: ayer `100`, hoy `2` => ganancia diaria `2`, acumulado ajustado `102`.
 - El promedio semanal se calcula por semana calendario, de lunes a domingo, usando únicamente los días transcurridos: lunes usa lunes; martes usa lunes y martes; y así sucesivamente.
 - El mapa del año marca en rojo los días de `40` o menos, en amarillo los días de `41` a `50`, y en verde los días de `51` o más.
+- Estadísticas abre por defecto en la vista Semanal; después están Mensual y Todo.
+- La vista Semanal incluye un mapa de las últimas 52 semanas, coloreado según el promedio diario de cada semana con los mismos rangos rojo, amarillo y verde.
 - Cada usuario ve solamente sus propios datos.
 - Todos los valores están en dólares.
 

@@ -563,6 +563,38 @@ textarea:focus {
   background: #ff4d67;
 }
 
+.week-map-grid {
+  display: grid;
+  grid-template-columns: repeat(52, 10px);
+  gap: 4px;
+  overflow-x: auto;
+  padding: 3px 2px 6px;
+}
+
+.week-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(139, 162, 189, 0.22);
+}
+
+.week-cell.green {
+  background: #65e6a2;
+}
+
+.week-cell.yellow {
+  background: #ffd166;
+}
+
+.week-cell.red {
+  background: #ff4d67;
+}
+
+.week-cell.current {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
 .reset-tag {
   color: var(--yellow);
   font-size: 12px;

@@ -7,7 +7,7 @@ const DAILY_RED_MAX = 40;
 const DAILY_YELLOW_MAX = 50;
 const sections = ["capture", "stats", "forecast", "database"];
 
-let activeRange = "all";
+let activeRange = "week";
 let currentUser = null;
 let rowsCache = [];
 let pendingImportRows = [];
@@ -148,8 +148,12 @@ function renderCapture() {
 }
 
 function renderStats() {
-  const rows = filterRowsByRange(loadRows());
+  const allRows = loadRows();
+  const rows = filterRowsByRange(allRows);
   const pools = [...new Set(rows.map((row) => row.pool))];
+  const weeklyMap = $("#weeklyMapStats");
+  weeklyMap.classList.toggle("auth-hidden", activeRange !== "week");
+  if (activeRange === "week") weeklyMap.innerHTML = renderWeeklyMap(allRows);
   $("#realTotalStats").innerHTML = renderRealTotalStats(rows);
   $("#combinedStats").innerHTML = renderCombinedStats(rows);
   $("#poolStats").innerHTML = pools.length
@@ -159,9 +163,12 @@ function renderStats() {
 
 function filterRowsByRange(rows) {
   if (activeRange === "all" || !rows.length) return rows;
-  const dates = [...new Set(rows.map((row) => row.date))].sort();
-  const allowed = new Set(dates.slice(-Number(activeRange)));
-  return rows.filter((row) => allowed.has(row.date));
+  const today = parseLocalDate(todayISO());
+  const start = activeRange === "week" ? mondayStart(today) : new Date(today.getFullYear(), today.getMonth(), 1);
+  return rows.filter((row) => {
+    const date = parseLocalDate(row.date);
+    return date >= start && date <= today;
+  });
 }
 
 function dailySeries(rows) {
@@ -266,6 +273,63 @@ function renderMetrics(data) {
       <div class="metric-box"><span>Media</span><strong>${money.format(data.average)}</strong></div>
       <div class="metric-box"><span>Promedio semana</span><strong>${money.format(data.weekAverage)}</strong></div>
     </div>
+  `;
+}
+
+function renderWeeklyMap(rows) {
+  const today = parseLocalDate(todayISO());
+  const currentWeekStart = mondayStart(today);
+  const firstWeekStart = addDays(currentWeekStart, -7 * 51);
+  const totalsByDate = new Map(dailySeries(rows).map((item) => [item.date, item.value]));
+  const weeks = Array.from({ length: 52 }, (_, index) => {
+    const start = addDays(firstWeekStart, index * 7);
+    const naturalEnd = addDays(start, 6);
+    const end = naturalEnd > today ? today : naturalEnd;
+    const values = [];
+
+    for (let date = new Date(start); date <= end; date = addDays(date, 1)) {
+      const value = totalsByDate.get(toISODate(date));
+      if (value !== undefined) values.push(value);
+    }
+
+    const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    const status =
+      average === null
+        ? "empty"
+        : average <= DAILY_RED_MAX
+          ? "red"
+          : average <= DAILY_YELLOW_MAX
+            ? "yellow"
+            : "green";
+    return { start, end: naturalEnd, average, status };
+  });
+
+  const greenWeeks = weeks.filter((week) => week.status === "green").length;
+  const yellowWeeks = weeks.filter((week) => week.status === "yellow").length;
+  const redWeeks = weeks.filter((week) => week.status === "red").length;
+  const cells = weeks
+    .map((week, index) => {
+      const label = `${formatChartDate(toISODate(week.start))}–${formatChartDate(toISODate(week.end))}`;
+      const title = `${label}: ${week.average === null ? "sin datos" : `promedio ${money.format(week.average)}`}`;
+      return `<span class="week-cell ${week.status}${index === 51 ? " current" : ""}" title="${escapeHtml(title)}"></span>`;
+    })
+    .join("");
+
+  return `
+    <div class="year-map-head">
+      <div>
+        <p class="eyebrow">Promedio por semana</p>
+        <strong>Mapa de las últimas 52 semanas</strong>
+        <span>${greenWeeks} verdes · ${yellowWeeks} amarillas · ${redWeeks} rojas</span>
+      </div>
+      <strong>Lunes a domingo</strong>
+    </div>
+    <div class="year-map-legend">
+      <span><i class="green"></i> ${money.format(51)} o más</span>
+      <span><i class="yellow"></i> ${money.format(41)} a ${money.format(50)}</span>
+      <span><i class="red"></i> ${money.format(40)} o menos</span>
+    </div>
+    <div class="week-map-grid" aria-label="Mapa de promedio semanal">${cells}</div>
   `;
 }
 
