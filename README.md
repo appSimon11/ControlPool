@@ -17,8 +17,8 @@ Esta versión es igual a la app Railway original, pero usando **PostgreSQL** en 
 - Si el acumulado de hoy es menor que el registro anterior del mismo pool, se marca como pool modificado/reset.
 - En reset, la ganancia diaria es el valor visible nuevo.
 - El acumulado ajustado sigue sumando históricamente. Ejemplo: ayer `100`, hoy `2` => ganancia diaria `2`, acumulado ajustado `102`.
-- El promedio semanal se calcula por semana calendario, de lunes a domingo.
-- El mapa del año marca en verde los días con ganancia diaria total de `50` o más, y en rojo los días por debajo de `50`.
+- El promedio semanal se calcula por semana calendario, de lunes a domingo, usando únicamente los días transcurridos: lunes usa lunes; martes usa lunes y martes; y así sucesivamente.
+- El mapa del año marca en rojo los días de `40` o menos, en amarillo los días de `41` a `50`, y en verde los días de `51` o más.
 - Cada usuario ve solamente sus propios datos.
 - Todos los valores están en dólares.
 

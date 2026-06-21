@@ -3,7 +3,8 @@ const USER_DEFAULT_POOLS = {
   Sandra: ["UNI"]
 };
 const COLORS = ["#16d9f4", "#ff4fa1", "#2d7cff", "#27e49f", "#ffd166", "#9b7bff"];
-const DAILY_TARGET = 50;
+const DAILY_RED_MAX = 40;
+const DAILY_YELLOW_MAX = 50;
 const sections = ["capture", "stats", "forecast", "database"];
 
 let activeRange = "all";
@@ -192,13 +193,12 @@ function metrics(series) {
 
 function calendarWeekAverage(series) {
   if (!series.length) return 0;
-  const latestDate = parseLocalDate(series.at(-1).date);
-  const weekStart = mondayStart(latestDate);
-  const weekEnd = addDays(weekStart, 6);
+  const today = parseLocalDate(todayISO());
+  const weekStart = mondayStart(today);
   const weekValues = series
     .filter((item) => {
       const date = parseLocalDate(item.date);
-      return date >= weekStart && date <= weekEnd;
+      return date >= weekStart && date <= today;
     })
     .map((item) => item.value);
   return weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : 0;
@@ -234,7 +234,7 @@ function renderRealTotalStats(rows) {
       </div>
       <span class="muted">${daily.length} días</span>
     </div>
-    ${renderChart(cumulative, "#27e49f")}
+    ${renderChart(cumulative, "#27e49f", { showDateGuides: true })}
     <div class="metric-grid">
       <div class="metric-box"><span>Total real</span><strong>${money.format(total)}</strong></div>
       <div class="metric-box"><span>Mejor día</span><strong>${money.format(bestDay)}</strong></div>
@@ -281,8 +281,9 @@ function renderYearThresholdMap(rows, selectedDate) {
   const totalsByDate = new Map(dailySeries(rows).map((item) => [item.date, item.value]));
   const selectedDay = dayOfYear(selected);
   const yearRows = [...totalsByDate.entries()].filter(([date]) => date.startsWith(`${year}-`));
-  const greenDays = yearRows.filter(([, value]) => value >= DAILY_TARGET).length;
-  const redDays = yearRows.filter(([, value]) => value < DAILY_TARGET).length;
+  const redDays = yearRows.filter(([, value]) => value <= DAILY_RED_MAX).length;
+  const yellowDays = yearRows.filter(([, value]) => value > DAILY_RED_MAX && value <= DAILY_YELLOW_MAX).length;
+  const greenDays = yearRows.filter(([, value]) => value > DAILY_YELLOW_MAX).length;
 
   const cells = Array.from({ length: gridDays }, (_, index) => {
     const date = addDays(firstGridDay, index);
@@ -290,7 +291,14 @@ function renderYearThresholdMap(rows, selectedDate) {
     const isOutsideYear = date.getFullYear() !== year;
     const value = totalsByDate.get(iso);
     const isFuture = date > today;
-    const status = isOutsideYear || isFuture || value === undefined ? "empty" : value >= DAILY_TARGET ? "up" : "down";
+    const status =
+      isOutsideYear || isFuture || value === undefined
+        ? "empty"
+        : value <= DAILY_RED_MAX
+          ? "red"
+          : value <= DAILY_YELLOW_MAX
+            ? "yellow"
+            : "green";
     const isSelected = iso === selectedDate;
     const title = isOutsideYear ? "" : `${iso}: ${value === undefined ? "sin dato" : money.format(value)}`;
     return `<span class="year-cell ${status}${isSelected ? " selected" : ""}" title="${escapeHtml(title)}"></span>`;
@@ -300,9 +308,14 @@ function renderYearThresholdMap(rows, selectedDate) {
     <div class="year-map-head">
       <div>
         <strong>Mapa del año</strong>
-        <span>Meta diaria: ${money.format(DAILY_TARGET)} · ${greenDays} arriba · ${redDays} abajo</span>
+        <span>${greenDays} verdes · ${yellowDays} amarillos · ${redDays} rojos</span>
       </div>
       <strong>${year} · día ${selectedDay}</strong>
+    </div>
+    <div class="year-map-legend">
+      <span><i class="green"></i> ${money.format(51)} o más</span>
+      <span><i class="yellow"></i> ${money.format(41)} a ${money.format(50)}</span>
+      <span><i class="red"></i> ${money.format(40)} o menos</span>
     </div>
     <div class="year-map-grid" aria-label="Mapa anual de meta diaria">${cells}</div>
   `;
@@ -348,30 +361,65 @@ function dayOfYear(date) {
   return differenceInDays(date, new Date(date.getFullYear(), 0, 1)) + 1;
 }
 
-function renderChart(series, color) {
-  if (series.length < 2) return `<div class="chart empty-state">Se necesitan al menos 2 puntos.</div>`;
+function renderChart(series, color, options = {}) {
+  if (!series.length) return `<div class="chart empty-state">Sin datos para graficar.</div>`;
   const width = 640;
   const height = 170;
   const pad = 16;
+  const bottomPad = options.showDateGuides ? 34 : pad;
   const values = series.map((item) => item.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
   const points = series.map((item, index) => {
-    const x = pad + (index / (series.length - 1)) * (width - pad * 2);
-    const y = height - pad - ((item.value - min) / span) * (height - pad * 2);
+    const x = series.length === 1 ? width / 2 : pad + (index / (series.length - 1)) * (width - pad * 2);
+    const y = height - bottomPad - ((item.value - min) / span) * (height - pad - bottomPad);
     return [round2(x), round2(y)];
   });
   const line = points.map(([x, y], index) => `${index ? "L" : "M"} ${x} ${y}`).join(" ");
-  const area = `${line} L ${points.at(-1)[0]} ${height - pad} L ${points[0][0]} ${height - pad} Z`;
-  const grid = [0.25, 0.5, 0.75].map((pct) => `<line class="axis" x1="${pad}" x2="${width - pad}" y1="${height * pct}" y2="${height * pct}" />`).join("");
+  const baseline = height - bottomPad;
+  const area = `${line} L ${points.at(-1)[0]} ${baseline} L ${points[0][0]} ${baseline} Z`;
+  const grid = [0.25, 0.5, 0.75]
+    .map((pct) => {
+      const y = pad + (height - pad - bottomPad) * pct;
+      return `<line class="axis" x1="${pad}" x2="${width - pad}" y1="${y}" y2="${y}" />`;
+    })
+    .join("");
+  const dateGuides = options.showDateGuides ? renderDateGuides(series, points, baseline) : "";
+  const point = series.length === 1 ? `<circle class="chart-point" cx="${points[0][0]}" cy="${points[0][1]}" r="4" fill="${color}"></circle>` : "";
   return `
     <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfica de ganancias">
       ${grid}
+      ${dateGuides}
       <path class="area" d="${area}" fill="${color}"></path>
       <path class="line" d="${line}" stroke="${color}"></path>
+      ${point}
     </svg>
   `;
+}
+
+function renderDateGuides(series, points, baseline) {
+  const maxGuides = 9;
+  const step = Math.max(1, Math.ceil(series.length / maxGuides));
+  const indexes = [];
+  for (let index = 0; index < series.length; index += step) indexes.push(index);
+  if (indexes.at(-1) !== series.length - 1) indexes.push(series.length - 1);
+
+  return indexes
+    .map((index) => {
+      const [x] = points[index];
+      const label = formatChartDate(series[index].date);
+      return `
+        <line class="chart-date-guide" x1="${x}" x2="${x}" y1="16" y2="${baseline}"></line>
+        <text class="chart-date-label" x="${x}" y="${baseline + 17}" text-anchor="middle">${label}</text>
+      `;
+    })
+    .join("");
+}
+
+function formatChartDate(value) {
+  const date = parseLocalDate(value);
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function renderForecast() {

@@ -513,17 +513,54 @@ textarea:focus {
   background: rgba(139, 162, 189, 0.22);
 }
 
-.year-cell.up {
+.year-cell.green {
   background: #65e6a2;
 }
 
-.year-cell.down {
+.year-cell.yellow {
+  background: #ffd166;
+}
+
+.year-cell.red {
   background: #ff4d67;
 }
 
 .year-cell.selected {
   outline: 2px solid #ffffff;
   outline-offset: 1px;
+}
+
+.year-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.year-map-legend span {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.year-map-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.year-map-legend i.green {
+  background: #65e6a2;
+}
+
+.year-map-legend i.yellow {
+  background: #ffd166;
+}
+
+.year-map-legend i.red {
+  background: #ff4d67;
 }
 
 .reset-tag {
@@ -633,6 +670,17 @@ textarea:focus {
 .chart .axis {
   stroke: rgba(139, 162, 189, 0.18);
   stroke-width: 1;
+}
+
+.chart-date-guide {
+  stroke: rgba(139, 162, 189, 0.2);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.chart-date-label {
+  fill: var(--muted);
+  font-size: 10px;
 }
 
 .forecast-card.feature {
